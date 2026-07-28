@@ -11,6 +11,15 @@ const prisma = new PrismaClient({ adapter });
 // ---- Telegram Bot ----
 const GAME_URL = "https://snake-game-telegram-bot.vercel.app";
 const bot = new TelegramBot(process.env.BOT_TOKEN as string, { polling: true });
+const mainMenu = {
+  reply_markup: {
+    keyboard: [
+      [{ text: "▶️ Play" }, { text: "🏆 Leaderboard" }],
+      [{ text: "❓ Help" }, { text: "💬 Feedback" }],
+    ],
+    resize_keyboard: true,
+  },
+};
 const awaitingNickname = new Set<string>();
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
@@ -28,11 +37,7 @@ bot.onText(/\/start/, async (msg) => {
     return;
   }
 
-  bot.sendMessage(chatId, `🐍 Welcome back, ${user.nickname}! Tap below to play.`, {
-    reply_markup: {
-      inline_keyboard: [[{ text: "▶️ Play Snake", web_app: { url: GAME_URL } }]],
-    },
-  });
+  bot.sendMessage(chatId, `🐍 Welcome back, ${user.nickname}! Use the menu below anytime.`, mainMenu);
 });
 bot.on("message", async (msg) => {
   const chatId = msg.chat.id;
@@ -51,11 +56,56 @@ bot.on("message", async (msg) => {
 
   awaitingNickname.delete(telegramId);
 
-  bot.sendMessage(chatId, `Got it, ${nickname}! 🐍 Tap below to play.`, {
+  bot.sendMessage(chatId, `Got it, ${nickname}! 🐍 Use the menu below anytime.`, mainMenu);
+});
+bot.onText(/▶️ Play/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, "Tap below to play!", {
     reply_markup: {
       inline_keyboard: [[{ text: "▶️ Play Snake", web_app: { url: GAME_URL } }]],
     },
   });
+});
+
+bot.onText(/🏆 Leaderboard/, async (msg) => {
+  const chatId = msg.chat.id;
+  const scores = await prisma.score.findMany({ orderBy: { score: "desc" }, take: 100 });
+
+  const bestPerPlayer = new Map();
+  for (const s of scores) {
+    if (!bestPerPlayer.has(s.telegramId) || bestPerPlayer.get(s.telegramId).score < s.score) {
+      bestPerPlayer.set(s.telegramId, s);
+    }
+  }
+
+  const top10 = Array.from(bestPerPlayer.values()).sort((a, b) => b.score - a.score).slice(0, 10);
+
+  if (top10.length === 0) {
+    bot.sendMessage(chatId, "No scores yet — be the first to play!");
+    return;
+  }
+
+  const medals = ["🥇", "🥈", "🥉"];
+  const lines = top10.map((s, i) => {
+    const rank = medals[i] || `${i + 1}.`;
+    const name = s.username ? `@${s.username}` : `Player ${s.telegramId}`;
+    return `${rank} ${name} — ${s.score}`;
+  });
+
+  bot.sendMessage(chatId, `🏆 Leaderboard\n\n${lines.join("\n")}`);
+});
+
+bot.onText(/❓ Help/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(
+    chatId,
+    "🐍 How to play:\n\n• Tap Play to start\n• Swipe or use arrow keys to move\n• Eat the food to grow and score points\n• Avoid walls and your own tail!\n\nUse the menu below to check the leaderboard or send feedback anytime."
+  );
+});
+
+bot.onText(/💬 Feedback/, (msg) => {
+  const chatId = msg.chat.id;
+  bot.sendMessage(chatId, "Got feedback or found a bug? Just type it below and send — I'll read it!");
 });
 bot.onText(/\/leaderboard/, async (msg) => {
   const chatId = msg.chat.id;
