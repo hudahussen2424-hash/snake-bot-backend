@@ -70,7 +70,9 @@ app.post("/score", async (req, res) => {
     if (!telegramId || typeof score !== "number") {
       return res.status(400).json({ error: "telegramId and numeric score are required" });
     }
-
+if (score < 0 || score > 500) {
+      return res.status(400).json({ error: "Score out of allowed range" });
+    }
     const saved = await prisma.score.create({
       data: {
         telegramId: String(telegramId),
