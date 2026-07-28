@@ -33,6 +33,7 @@ const mainMenu = {
 };
 
 const awaitingNickname = new Set<string>();
+const awaitingFeedback = new Set<string>();
 
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
@@ -59,7 +60,25 @@ bot.on("message", async (msg) => {
   const text = msg.text;
 
   if (!text || text.startsWith("/")) return; // ignore commands here
-  if (!awaitingNickname.has(telegramId)) return; // not expecting a nickname right now
+
+  // Handle feedback first
+  if (awaitingFeedback.has(telegramId)) {
+    awaitingFeedback.delete(telegramId);
+
+    const user = await prisma.user.findUnique({ where: { telegramId } });
+    const senderName = user?.nickname || telegramId;
+
+    const adminId = process.env.ADMIN_CHAT_ID;
+    if (adminId) {
+      bot.sendMessage(adminId, `📬 Feedback from ${senderName} (${telegramId}):\n\n${text}`);
+    }
+
+    bot.sendMessage(chatId, "Thanks! Your feedback was sent 🙏");
+    return;
+  }
+
+  // Handle nickname setup
+  if (!awaitingNickname.has(telegramId)) return; // not expecting anything right now
 
   const nickname = text.trim().slice(0, 20); // cap length, keep it simple
 
@@ -111,7 +130,9 @@ bot.onText(/❓ Help/, (msg) => {
 
 bot.onText(/💬 Feedback/, (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, "Got feedback or found a bug? Just type it below and send — I'll read it!");
+  const telegramId = String(msg.from?.id);
+  awaitingFeedback.add(telegramId);
+  bot.sendMessage(chatId, "Got feedback or found a bug? Type it below and send — I'll read it!");
 });
 
 app.use(cors());
