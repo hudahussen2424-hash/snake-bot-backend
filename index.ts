@@ -178,6 +178,35 @@ app.post("/score", async (req, res) => {
   }
 });
 
+// Lightweight live update — called every time food is eaten, keeps bestScore current
+// without creating a full Score record or incrementing gamesPlayed
+app.post("/score/live", async (req, res) => {
+  try {
+    const { telegramId, score } = req.body;
+
+    if (!telegramId || typeof score !== "number") {
+      return res.status(400).json({ error: "telegramId and numeric score are required" });
+    }
+
+    if (score < 0 || score > 500) {
+      return res.status(400).json({ error: "Score out of allowed range" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { telegramId: String(telegramId) } });
+    if (user && score > user.bestScore) {
+      await prisma.user.update({
+        where: { telegramId: String(telegramId) },
+        data: { bestScore: score },
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to update live score" });
+  }
+});
+
 app.get("/leaderboard", async (req, res) => {
   try {
     const top10 = await getLeaderboard();
