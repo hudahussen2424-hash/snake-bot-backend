@@ -11,16 +11,52 @@ const prisma = new PrismaClient({ adapter });
 // ---- Telegram Bot ----
 const GAME_URL = "https://snake-game-telegram-bot.vercel.app";
 const bot = new TelegramBot(process.env.BOT_TOKEN as string, { polling: true });
-
-bot.onText(/\/start/, (msg) => {
+const awaitingNickname = new Set<string>();
+bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, "🐍 Welcome! Tap below to play Snake.", {
+  const telegramId = String(msg.from?.id);
+
+  let user = await prisma.user.findUnique({ where: { telegramId } });
+
+  if (!user) {
+    user = await prisma.user.create({ data: { telegramId } });
+  }
+
+  if (!user.nickname) {
+    awaitingNickname.add(telegramId);
+    bot.sendMessage(chatId, "👋 Welcome! What name should we show on the leaderboard?");
+    return;
+  }
+
+  bot.sendMessage(chatId, `🐍 Welcome back, ${user.nickname}! Tap below to play.`, {
     reply_markup: {
       inline_keyboard: [[{ text: "▶️ Play Snake", web_app: { url: GAME_URL } }]],
     },
   });
 });
+bot.on("message", async (msg) => {
+  const chatId = msg.chat.id;
+  const telegramId = String(msg.from?.id);
+  const text = msg.text;
 
+  if (!text || text.startsWith("/")) return; // ignore commands here
+  if (!awaitingNickname.has(telegramId)) return; // not expecting a nickname right now
+
+  const nickname = text.trim().slice(0, 20); // cap length, keep it simple
+
+  await prisma.user.update({
+    where: { telegramId },
+    data: { nickname },
+  });
+
+  awaitingNickname.delete(telegramId);
+
+  bot.sendMessage(chatId, `Got it, ${nickname}! 🐍 Tap below to play.`, {
+    reply_markup: {
+      inline_keyboard: [[{ text: "▶️ Play Snake", web_app: { url: GAME_URL } }]],
+    },
+  });
+});
 bot.onText(/\/leaderboard/, async (msg) => {
   const chatId = msg.chat.id;
   try {

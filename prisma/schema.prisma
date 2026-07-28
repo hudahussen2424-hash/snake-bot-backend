@@ -11,6 +11,14 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+model User {
+  id         Int      @id @default(autoincrement())
+  telegramId String   @unique
+  nickname   String?
+  bestScore  Int      @default(0)
+  gamesPlayed Int     @default(0)
+  createdAt  DateTime @default(now())
+}
 model Score {
   id         Int      @id @default(autoincrement())
   telegramId String
